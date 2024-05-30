@@ -28,6 +28,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -101,6 +102,12 @@ func GetOAuthTokenManagerInstance() (*common.UserOAuthTokenManager, error) {
 
 		if endpoint := glcm.GetEnvironmentVariable(common.EEnvironmentVariable.AADEndpoint()); endpoint != "" {
 			lca.aadEndpoint = endpoint
+		}
+
+		if disableDiscoveryString := glcm.GetEnvironmentVariable(common.EEnvironmentVariable.AADDisableInstanceDiscovery()); disableDiscoveryString != "" {
+			if disableDiscovery, err := strconv.ParseBool(disableDiscoveryString); err == nil {
+				lca.disableInstanceDiscovery = disableDiscovery
+			}
 		}
 
 		// Fill up lca

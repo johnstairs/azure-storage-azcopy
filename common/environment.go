@@ -60,6 +60,7 @@ var VisibleEnvironmentVariables = []EnvironmentVariable{
 	EEnvironmentVariable.AutoLoginType(),
 	EEnvironmentVariable.TenantID(),
 	EEnvironmentVariable.AADEndpoint(),
+	EEnvironmentVariable.AADDisableInstanceDiscovery(),
 	EEnvironmentVariable.ApplicationID(),
 	EEnvironmentVariable.CertificatePath(),
 	EEnvironmentVariable.ManagedIdentityClientID(),
@@ -108,6 +109,13 @@ func (EnvironmentVariable) AADEndpoint() EnvironmentVariable {
 	return EnvironmentVariable{
 		Name:        "AZCOPY_ACTIVE_DIRECTORY_ENDPOINT",
 		Description: "The Azure Active Directory endpoint to use. This variable is only used for auto login, please use the command line flag instead when invoking the login command.",
+	}
+}
+
+func (EnvironmentVariable) AADDisableInstanceDiscovery() EnvironmentVariable {
+	return EnvironmentVariable{
+		Name:        "AZCOPY_ACTIVE_DIRECTORY_DISABLE_INSTANCE_DISCOVERY",
+		Description: "Should be set true only by applications authenticating in disconnected clouds, or private clouds such as Azure Stack. It determines whether the credential requests Microsoft Entra instance metadata from https://login.microsoft.com before authenticating. Setting this to true will skip this request.",
 	}
 }
 

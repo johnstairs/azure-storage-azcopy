@@ -86,8 +86,9 @@ func init() {
 
 type loginCmdArgs struct {
 	// OAuth login arguments
-	tenantID    string
-	aadEndpoint string
+	tenantID                 string
+	aadEndpoint              string
+	disableInstanceDiscovery bool
 
 	identity         bool // Whether to use MSI.
 	servicePrincipal bool
@@ -165,13 +166,13 @@ func (lca loginCmdArgs) process() error {
 	case lca.servicePrincipal:
 
 		if lca.certPath != "" {
-			if err := uotm.CertLogin(lca.tenantID, lca.aadEndpoint, lca.certPath, lca.certPass, lca.applicationID, lca.persistToken); err != nil {
+			if err := uotm.CertLogin(lca.tenantID, lca.aadEndpoint, lca.disableInstanceDiscovery, lca.certPath, lca.certPass, lca.applicationID, lca.persistToken); err != nil {
 				return err
 			}
 
 			glcm.Info("SPN Auth via cert succeeded.")
 		} else {
-			if err := uotm.SecretLogin(lca.tenantID, lca.aadEndpoint, lca.clientSecret, lca.applicationID, lca.persistToken); err != nil {
+			if err := uotm.SecretLogin(lca.tenantID, lca.aadEndpoint, lca.disableInstanceDiscovery, lca.clientSecret, lca.applicationID, lca.persistToken); err != nil {
 				return err
 			}
 
@@ -198,7 +199,7 @@ func (lca loginCmdArgs) process() error {
 		}
 		glcm.Info("Login with Powershell context succeeded")
 	default:
-		if err := uotm.UserLogin(lca.tenantID, lca.aadEndpoint, lca.persistToken); err != nil {
+		if err := uotm.UserLogin(lca.tenantID, lca.aadEndpoint, lca.disableInstanceDiscovery, lca.persistToken); err != nil {
 			return err
 		}
 		// User fulfills login in browser, and there would be message in browser indicating whether login fulfilled successfully.

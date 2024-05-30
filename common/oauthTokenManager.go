@@ -173,13 +173,14 @@ func (uotm *UserOAuthTokenManager) AzCliLogin(tenantID string) error {
 }
 
 func (uotm *UserOAuthTokenManager) PSContextToken(tenantID string) error {
-	oAuthTokenInfo := &OAuthTokenInfo {
+	oAuthTokenInfo := &OAuthTokenInfo{
 		PSCred: true,
 		Tenant: tenantID,
 	}
 
 	return uotm.validateAndPersistLogin(oAuthTokenInfo, false)
 }
+
 // MSILogin tries to get token from MSI, persist indicates whether to cache the token on local disk.
 func (uotm *UserOAuthTokenManager) MSILogin(identityInfo IdentityInfo, persist bool) error {
 	if err := identityInfo.Validate(); err != nil {
@@ -195,12 +196,13 @@ func (uotm *UserOAuthTokenManager) MSILogin(identityInfo IdentityInfo, persist b
 }
 
 // SecretLogin is a UOTM shell for secretLoginNoUOTM.
-func (uotm *UserOAuthTokenManager) SecretLogin(tenantID, activeDirectoryEndpoint, secret, applicationID string, persist bool) error {
+func (uotm *UserOAuthTokenManager) SecretLogin(tenantID string, activeDirectoryEndpoint string, disableInstanceDiscovery bool, secret, applicationID string, persist bool) error {
 	oAuthTokenInfo := &OAuthTokenInfo{
-		ServicePrincipalName:    true,
-		Tenant:                  tenantID,
-		ActiveDirectoryEndpoint: activeDirectoryEndpoint,
-		ApplicationID:           applicationID,
+		ServicePrincipalName:     true,
+		Tenant:                   tenantID,
+		ActiveDirectoryEndpoint:  activeDirectoryEndpoint,
+		DisableInstanceDiscovery: disableInstanceDiscovery,
+		ApplicationID:            applicationID,
 		SPNInfo: SPNInfo{
 			Secret:   secret,
 			CertPath: "",
@@ -211,7 +213,7 @@ func (uotm *UserOAuthTokenManager) SecretLogin(tenantID, activeDirectoryEndpoint
 }
 
 // CertLogin non-interactively logs in using a specified certificate, certificate password, and activedirectory endpoint.
-func (uotm *UserOAuthTokenManager) CertLogin(tenantID, activeDirectoryEndpoint, certPath, certPass, applicationID string, persist bool) error {
+func (uotm *UserOAuthTokenManager) CertLogin(tenantID string, activeDirectoryEndpoint string, disableInstanceDiscovery bool, certPath, certPass, applicationID string, persist bool) error {
 	// Use default tenant ID and active directory endpoint, if nothing specified.
 	if tenantID == "" {
 		tenantID = DefaultTenantID
@@ -221,10 +223,11 @@ func (uotm *UserOAuthTokenManager) CertLogin(tenantID, activeDirectoryEndpoint, 
 	}
 	absCertPath, _ := filepath.Abs(certPath)
 	oAuthTokenInfo := &OAuthTokenInfo{
-		ServicePrincipalName:    true,
-		Tenant:                  tenantID,
-		ActiveDirectoryEndpoint: activeDirectoryEndpoint,
-		ApplicationID:           applicationID,
+		ServicePrincipalName:     true,
+		Tenant:                   tenantID,
+		ActiveDirectoryEndpoint:  activeDirectoryEndpoint,
+		DisableInstanceDiscovery: disableInstanceDiscovery,
+		ApplicationID:            applicationID,
 		SPNInfo: SPNInfo{
 			Secret:   certPass,
 			CertPath: absCertPath,
@@ -236,7 +239,7 @@ func (uotm *UserOAuthTokenManager) CertLogin(tenantID, activeDirectoryEndpoint, 
 
 // UserLogin interactively logins in with specified tenantID and activeDirectoryEndpoint, persist indicates whether to
 // cache the token on local disk.
-func (uotm *UserOAuthTokenManager) UserLogin(tenantID, activeDirectoryEndpoint string, persist bool) error {
+func (uotm *UserOAuthTokenManager) UserLogin(tenantID, activeDirectoryEndpoint string, disableInstanceDiscovery bool, persist bool) error {
 	// Use default tenant ID and active directory endpoint, if nothing specified.
 	if tenantID == "" {
 		tenantID = DefaultTenantID
@@ -279,10 +282,11 @@ func (uotm *UserOAuthTokenManager) UserLogin(tenantID, activeDirectoryEndpoint s
 	}
 
 	oAuthTokenInfo := OAuthTokenInfo{
-		Token:                   *token,
-		Tenant:                  tenantID,
-		ActiveDirectoryEndpoint: activeDirectoryEndpoint,
-		ApplicationID:           ApplicationID,
+		Token:                    *token,
+		Tenant:                   tenantID,
+		ActiveDirectoryEndpoint:  activeDirectoryEndpoint,
+		DisableInstanceDiscovery: disableInstanceDiscovery,
+		ApplicationID:            ApplicationID,
 	}
 	uotm.stashedInfo = &oAuthTokenInfo
 
@@ -416,16 +420,17 @@ const TokenRefreshSourceTokenStore = "tokenstore"
 type OAuthTokenInfo struct {
 	azcore.TokenCredential `json:"-"`
 	adal.Token
-	Tenant                  string `json:"_tenant"`
-	ActiveDirectoryEndpoint string `json:"_ad_endpoint"`
-	TokenRefreshSource      string `json:"_token_refresh_source"`
-	ApplicationID           string `json:"_application_id"`
-	Identity                bool   `json:"_identity"`
-	IdentityInfo            IdentityInfo
-	ServicePrincipalName    bool `json:"_spn"`
-	SPNInfo                 SPNInfo
-	AzCLICred               bool
-	PSCred					bool
+	Tenant                   string `json:"_tenant"`
+	ActiveDirectoryEndpoint  string `json:"_ad_endpoint"`
+	DisableInstanceDiscovery bool   `json:"_ad_disable_instance_discovery"`
+	TokenRefreshSource       string `json:"_token_refresh_source"`
+	ApplicationID            string `json:"_application_id"`
+	Identity                 bool   `json:"_identity"`
+	IdentityInfo             IdentityInfo
+	ServicePrincipalName     bool `json:"_spn"`
+	SPNInfo                  SPNInfo
+	AzCLICred                bool
+	PSCred                   bool
 	// Note: ClientID should be only used for internal integrations through env var with refresh token.
 	// It indicates the Application ID assigned to your app when you registered it with Azure AD.
 	// In this case AzCopy refresh token on behalf of caller.
@@ -524,6 +529,7 @@ func getAuthorityURL(tenantID, activeDirectoryEndpoint string) (*url.URL, error)
 }
 
 const minimumTokenValidDuration = time.Minute * 5
+
 type TokenStoreCredential struct {
 	token *azcore.AccessToken
 	lock  sync.RWMutex
@@ -534,7 +540,7 @@ type TokenStoreCredential struct {
 // we do not make repeated GetToken calls.
 // This is a temporary fix for issue where we would request a
 // new token from Stg Exp even while they've not yet populated the
-// tokenstore. 
+// tokenstore.
 //
 // This is okay because we use same credential on both source and
 // destination. If we move to a case where the credentials are
@@ -542,7 +548,6 @@ type TokenStoreCredential struct {
 //
 // We should move to a method where the token is always read  from
 // tokenstore, and azcopy is invoked after tokenstore is populated.
-//
 var globalTokenStoreCredential *TokenStoreCredential
 var globalTsc sync.Once
 
@@ -577,7 +582,7 @@ func (tsc *TokenStoreCredential) GetToken(_ context.Context, _ policy.TokenReque
 
 // GetNewTokenFromTokenStore gets token from token store. (Credential Manager in Windows, keyring in Linux and keychain in MacOS.)
 // Note: This approach should only be used in internal integrations.
-func GetTokenStoreCredential(accessToken string, expiresOn time.Time) (azcore.TokenCredential) {
+func GetTokenStoreCredential(accessToken string, expiresOn time.Time) azcore.TokenCredential {
 	globalTsc.Do(func() {
 		globalTokenStoreCredential = &TokenStoreCredential{
 			token: &azcore.AccessToken{
@@ -635,6 +640,7 @@ func (credInfo *OAuthTokenInfo) GetClientCertificateCredential() (azcore.TokenCr
 			Cloud:     cloud.Configuration{ActiveDirectoryAuthorityHost: authorityHost.String()},
 			Transport: newAzcopyHTTPClient(),
 		},
+		DisableInstanceDiscovery: credInfo.DisableInstanceDiscovery,
 	})
 	if err != nil {
 		return nil, err
@@ -653,6 +659,7 @@ func (credInfo *OAuthTokenInfo) GetClientSecretCredential() (azcore.TokenCredent
 			Cloud:     cloud.Configuration{ActiveDirectoryAuthorityHost: authorityHost.String()},
 			Transport: newAzcopyHTTPClient(),
 		},
+		DisableInstanceDiscovery: credInfo.DisableInstanceDiscovery,
 	})
 	if err != nil {
 		return nil, err
